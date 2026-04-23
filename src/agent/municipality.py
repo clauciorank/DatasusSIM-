@@ -223,7 +223,7 @@ def extract_place_heuristic(pergunta: str) -> str:
         return ""
     text = pergunta.strip()
     low = f" {text.lower()} "
-    stop = {"por", "nos", "estratifique", "principais", "causas", "óbitos", "obitos", "mortes", "ano", "anos", "últimos", "quantos", "qual", "quais", "total", "número", "numero", "faixa", "sexo", "dengue", "covid"}
+    stop = {"por", "nos", "em", "na", "no", "estratifique", "principais", "causas", "óbitos", "obitos", "mortes", "ano", "anos", "últimos", "quantos", "qual", "quais", "total", "número", "numero", "faixa", "sexo", "dengue", "covid"}
     max_words = 8
 
     for sep in (" em ", " na ", " no ", " no município de ", " na cidade de "):
@@ -231,12 +231,13 @@ def extract_place_heuristic(pergunta: str) -> str:
         if idx < 0:
             continue
         start = idx + len(sep)
-        rest = text[start:].strip()
+        # low has a leading space not present in text, so offset by 1
+        rest = text[start - 1:].strip()
         rest_low = rest.lower()
         words = rest.split()
         take = []
         for w in words[:max_words]:
-            if w.lower() in stop:
+            if w.lower() in stop or re.match(r'^\d{4}$', w):
                 break
             take.append(w)
         if take:
@@ -267,6 +268,12 @@ def resolve_place(phrase: str) -> List[str]:
     try:
         from rapidfuzz import process
     except ImportError:
+        return []
+    # Strip year tokens and stray prepositions that confuse fuzzy matching
+    phrase = re.sub(r'\b\d{4}\b', '', phrase).strip()
+    phrase = re.sub(r'\b(em|na|no|de|do|da)\b', '', phrase, flags=re.IGNORECASE).strip()
+    phrase = re.sub(r'\s+', ' ', phrase).strip()
+    if not phrase or len(phrase) < 2:
         return []
     uf = _detect_uf_in_phrase(phrase)
     municipio_part = _remove_state_from_phrase(phrase, uf)

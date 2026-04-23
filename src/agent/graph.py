@@ -36,12 +36,12 @@ class AgentState(TypedDict, total=False):
     llm_config: Dict[str, Any]
 
 
-def _gemini_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1) -> str:
+def _gemini_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1, max_tokens: int = 2048) -> str:
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
         model_id or "gemini-3.1-flash-lite-preview",
-        generation_config={"temperature": temperature, "max_output_tokens": 2048},
+        generation_config={"temperature": temperature, "max_output_tokens": max_tokens},
     )
     full = f"{system}\n\n---\n\n{user_content}"
     response = model.generate_content(full)
@@ -58,7 +58,7 @@ def _gemini_call(api_key: str, model_id: str, system: str, user_content: str, te
     return response.text.strip()
 
 
-def _anthropic_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1) -> str:
+def _anthropic_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1, max_tokens: int = 2048) -> str:
     """Chama Anthropic Claude (chat completions)."""
     api_key = (api_key or "").strip()
     if not api_key:
@@ -69,7 +69,7 @@ def _anthropic_call(api_key: str, model_id: str, system: str, user_content: str,
         model = (model_id or "claude-3-5-sonnet-20241022").strip()
         msg = client.messages.create(
             model=model,
-            max_tokens=2048,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user_content}],
             temperature=temperature,
@@ -88,7 +88,7 @@ def _anthropic_call(api_key: str, model_id: str, system: str, user_content: str,
         return f"Erro Anthropic: {e!s}"
 
 
-def _openai_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1) -> str:
+def _openai_call(api_key: str, model_id: str, system: str, user_content: str, temperature: float = 0.1, max_tokens: int = 2048) -> str:
     """Chama OpenAI (chat completions)."""
     api_key = (api_key or "").strip()
     if not api_key:
@@ -104,7 +104,7 @@ def _openai_call(api_key: str, model_id: str, system: str, user_content: str, te
                 {"role": "user", "content": user_content},
             ],
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=max_tokens,
         )
         if getattr(completion, "usage", None):
             u = completion.usage
@@ -121,7 +121,7 @@ def _openai_call(api_key: str, model_id: str, system: str, user_content: str, te
         return f"Erro OpenAI: {e!s}"
 
 
-def _generic_call(base_url: str, model_id: str, api_key: str, system: str, user_content: str, temperature: float = 0.1) -> str:
+def _generic_call(base_url: str, model_id: str, api_key: str, system: str, user_content: str, temperature: float = 0.1, max_tokens: int = 2048) -> str:
     """Chama API compatível com OpenAI (ex.: LM Studio, Together, Groq)."""
     base = (base_url or "https://api.openai.com/v1").rstrip("/")
     model = (model_id or "gpt-4o").strip()
@@ -135,7 +135,7 @@ def _generic_call(base_url: str, model_id: str, api_key: str, system: str, user_
                 {"role": "user", "content": user_content},
             ],
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=max_tokens,
         )
         choice = (completion.choices or [None])[0]
         if not choice or not getattr(choice, "message", None):
@@ -176,7 +176,7 @@ def _ollama_call(base_url: str, model_id: str, system: str, user_content: str, t
         return f"Erro Ollama: {e!s}"
 
 
-def _llm_call(llm_config: Dict[str, Any], system: str, user_content: str, temperature: float = 0.1) -> str:
+def _llm_call(llm_config: Dict[str, Any], system: str, user_content: str, temperature: float = 0.1, max_tokens: int = 2048) -> str:
     """Despacha para Gemini, Anthropic, OpenAI, generic ou Ollama conforme llm_config."""
     if not llm_config:
         return ""
@@ -192,12 +192,12 @@ def _llm_call(llm_config: Dict[str, Any], system: str, user_content: str, temper
         api_key = (llm_config.get("api_key") or "").strip()
         if not api_key:
             return "Erro: Chave API Anthropic não configurada."
-        out = _anthropic_call(api_key, model or "claude-3-5-sonnet-20241022", system, user_content, temperature)
+        out = _anthropic_call(api_key, model or "claude-3-5-sonnet-20241022", system, user_content, temperature, max_tokens)
     elif provider == "openai":
         api_key = (llm_config.get("api_key") or "").strip()
         if not api_key:
             return "Erro: Chave API OpenAI não configurada."
-        out = _openai_call(api_key, model or "gpt-4o-mini", system, user_content, temperature)
+        out = _openai_call(api_key, model or "gpt-4o-mini", system, user_content, temperature, max_tokens)
     elif provider == "generic":
         base_url = (llm_config.get("generic_base_url") or "https://api.openai.com/v1").strip()
         api_key = (llm_config.get("api_key") or "").strip()
@@ -208,12 +208,13 @@ def _llm_call(llm_config: Dict[str, Any], system: str, user_content: str, temper
             system,
             user_content,
             temperature,
+            max_tokens,
         )
     else:
         api_key = (llm_config.get("api_key") or "").strip()
         if not api_key:
             return "Erro: Chave API Gemini não configurada."
-        out = _gemini_call(api_key, model or "gemini-3.1-flash-lite-preview", system, user_content, temperature)
+        out = _gemini_call(api_key, model or "gemini-3.1-flash-lite-preview", system, user_content, temperature, max_tokens)
     elapsed = time.perf_counter() - t0
     logger.info("llm_call %s %s %.1fs -> %d chars", provider, model_display, elapsed, len(out or ""))
     logger.debug("llm_call user_content (first 300 chars): %s", (user_content or "")[:300])
@@ -446,7 +447,7 @@ def _format_response_node(state: AgentState, llm_config: Dict[str, Any]) -> Agen
     from src.agent.schema import FORMAT_RESPONSE_SYSTEM
     pergunta = state.get("pergunta", "")
     sql = state.get("sql_planejada", "")
-    resultado = (state.get("resultado_execucao") or "")[:2000]
+    resultado = (state.get("resultado_execucao") or "")[:4000]
     user_msg = (
         f"Pergunta do usuário: {pergunta}\n\n"
         f"Query SQL executada:\n{sql}\n\n"
@@ -454,7 +455,7 @@ def _format_response_node(state: AgentState, llm_config: Dict[str, Any]) -> Agen
         "Escreva a resposta para o usuário com base nos dados acima."
     )
     logger.info("format_response: chamando LLM")
-    out = _llm_call(llm_config, FORMAT_RESPONSE_SYSTEM, user_msg, temperature=0.2)
+    out = _llm_call(llm_config, FORMAT_RESPONSE_SYSTEM, user_msg, temperature=0.2, max_tokens=4096)
     resposta = (out or "").strip()
     if not resposta:
         resposta = "Não foi possível formatar a resposta."
